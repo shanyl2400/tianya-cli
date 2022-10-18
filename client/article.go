@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"shanyl2400/tianya/repository"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 
 const (
 	contentPageSize = 100
+	nextPartition   = "next"
+	prevPartition   = "prev"
 )
 
 var (
@@ -37,27 +40,37 @@ type Article struct {
 	curViewContent string
 	offset         int
 
-	historyNext []string
-	historyPrev []string
-
+	history  repository.History
 	prevPage string
 	nextPage string
 }
 
 func (c *Article) Open() error {
+	err := c.history.Open()
+	if err != nil {
+		return err
+	}
 	return c.open(c.Href)
 }
 
-func (c *Article) Next() (string, error) {
-	if len(c.historyNext) > 0 {
-		out := c.historyNext[len(c.historyNext)-1]
-		c.historyNext = c.historyNext[:len(c.historyNext)-1]
+func (c *Article) Close() error {
+	return c.history.Close()
+}
 
-		if c.curViewContent != "" {
-			c.historyPrev = append(c.historyPrev, c.curViewContent)
+func (c *Article) Next() (string, error) {
+	if !c.history.IsEmpty(c.Title, nextPartition) {
+		out, err := c.history.Pop(c.Title, nextPartition)
+		if err != nil {
+			return "", err
 		}
-		c.curViewContent = out
-		return out, nil
+		if c.curViewContent != "" {
+			_, err = c.history.Push(c.Title, prevPartition, c.curViewContent)
+			if err != nil {
+				return "", err
+			}
+		}
+		c.curViewContent = out.Content
+		return out.Content, nil
 	}
 
 	for c.content == "" {
@@ -82,23 +95,31 @@ func (c *Article) Next() (string, error) {
 	if c.offset >= len(content) {
 		c.content = ""
 	}
+
 	if c.curViewContent != "" {
-		c.historyPrev = append(c.historyPrev, c.curViewContent)
+		_, err := c.history.Push(c.Title, prevPartition, c.curViewContent)
+		if err != nil {
+			fmt.Println("Push history failed, err: ", err)
+		}
 	}
 	c.curViewContent = string(out)
 	return c.curViewContent, nil
 }
 
 func (c *Article) Prev() (string, error) {
-	if len(c.historyPrev) > 0 {
-		out := c.historyPrev[len(c.historyPrev)-1]
-		c.historyPrev = c.historyPrev[:len(c.historyPrev)-1]
-
-		if c.curViewContent != "" {
-			c.historyNext = append(c.historyNext, c.curViewContent)
+	if !c.history.IsEmpty(c.Title, prevPartition) {
+		out, err := c.history.Pop(c.Title, prevPartition)
+		if err != nil {
+			return "", err
 		}
-		c.curViewContent = out
-		return out, nil
+		if c.curViewContent != "" {
+			_, err = c.history.Push(c.Title, nextPartition, c.curViewContent)
+			if err != nil {
+				return "", err
+			}
+		}
+		c.curViewContent = out.Content
+		return out.Content, nil
 	}
 
 	return "", ErrNoHistory
@@ -170,8 +191,7 @@ func (c *Article) open(path string) error {
 
 func NewArticle() *Article {
 	return &Article{
-		posts:       make([]*Post, 0),
-		historyNext: make([]string, 0),
-		historyPrev: make([]string, 0),
+		posts:   make([]*Post, 0),
+		history: repository.NewHistory("./data"),
 	}
 }

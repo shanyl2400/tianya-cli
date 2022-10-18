@@ -67,6 +67,10 @@ func (c *CUI) Articles() {
 	pterm.Info.Printfln("Selected option: %s", pterm.Green(selectedOption))
 
 	if selectedOption == "< 返回" {
+		err := c.article.Close()
+		if err != nil {
+			pterm.Info.Printfln("Close article failed, err: %v", err)
+		}
 		c.Columns()
 	} else {
 		for i := range articles {

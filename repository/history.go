@@ -62,12 +62,15 @@ func (h *BoltDBHistory) Push(title, partition, content string) (uint64, error) {
 func (h *BoltDBHistory) Pop(title, partition string) (*HistoryItem, error) {
 	item := new(HistoryItem)
 	err := h.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(h.bucket(title, partition))
+		b, err := tx.CreateBucketIfNotExists(h.bucket(title, partition))
+		if err != nil {
+			return err
+		}
 		cursor := b.Cursor()
 
 		key, value := cursor.Last()
 
-		err := json.Unmarshal(value, item)
+		err = json.Unmarshal(value, item)
 		if err != nil {
 			return err
 		}
@@ -85,8 +88,12 @@ func (h *BoltDBHistory) Pop(title, partition string) (*HistoryItem, error) {
 
 func (h *BoltDBHistory) IsEmpty(title, partition string) bool {
 	flag := false
-	h.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket(h.bucket(title, partition))
+	h.db.Update(func(tx *bbolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists(h.bucket(title, partition))
+		if err != nil {
+			flag = true
+			return err
+		}
 		cursor := b.Cursor()
 		key, _ := cursor.First()
 		if key == nil {
