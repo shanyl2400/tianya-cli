@@ -10,6 +10,13 @@ import (
 	"github.com/pterm/pterm/putils"
 )
 
+const (
+	optionGoBack   = "< 返回"
+	optionQuit     = "> 退出"
+	optionNextPage = "下一页 >"
+	optionPrevPage = "< 上一页"
+)
+
 func (c *CUI) Columns() {
 	spinnerInfo, err := pterm.DefaultSpinner.Start("Loading columns...")
 	if err != nil {
@@ -22,14 +29,14 @@ func (c *CUI) Columns() {
 	for i := range columns {
 		options = append(options, fmt.Sprintf("%v", columns[i].Name()))
 	}
-	options = append(options, "> 退出")
+	options = append(options, optionQuit)
 
 	interactiveSelect := pterm.DefaultInteractiveSelect
 	interactiveSelect.MaxHeight = 5
 	selectedOption, _ := interactiveSelect.WithOptions(options).Show("Please select a column")
 	pterm.Info.Printfln("Selected option: %s", pterm.Green(selectedOption))
 
-	if selectedOption == "> 退出" {
+	if selectedOption == optionQuit {
 		os.Exit(0)
 	}
 
@@ -55,31 +62,7 @@ func (c *CUI) Articles() {
 	}
 	spinnerInfo.Success("Load articles success")
 
-	articles := c.column.ListArticles()
-	options := []string{"< 返回"}
-	for i := range articles {
-		options = append(options, fmt.Sprintf("%v", articles[i].Title))
-	}
-
-	interactiveSelect := pterm.DefaultInteractiveSelect
-	interactiveSelect.MaxHeight = 5
-	selectedOption, _ := interactiveSelect.WithOptions(options).Show("Please select an article")
-	pterm.Info.Printfln("Selected option: %s", pterm.Green(selectedOption))
-
-	if selectedOption == "< 返回" {
-		err := c.article.Close()
-		if err != nil {
-			pterm.Info.Printfln("Close article failed, err: %v", err)
-		}
-		c.Columns()
-	} else {
-		for i := range articles {
-			if articles[i].Title == selectedOption {
-				c.article = articles[i]
-				c.Article()
-			}
-		}
-	}
+	c.listArticles()
 }
 
 func (c *CUI) Article() {
@@ -95,7 +78,7 @@ func (c *CUI) Article() {
 	}
 	spinnerInfo.Success("Load article success")
 
-	fmt.Print("Press d to start your read:")
+	fmt.Print("Press d to start your read...")
 	c.read(c.article)
 }
 
@@ -115,6 +98,86 @@ func (c *CUI) HomePage() {
 		panic(err)
 	}
 	spinnerInfo.Success("Connected to server")
+}
+
+func (c *CUI) listArticles() {
+	articles := c.column.ListArticles()
+	options := []string{}
+
+	//翻页
+	options = append(options, optionGoBack)
+	if c.column.HasPrevPage() {
+		options = append(options, optionPrevPage)
+	}
+
+	for i := range articles {
+		options = append(options, fmt.Sprintf("%v", articles[i].Title))
+	}
+
+	if c.column.HasNextPage() {
+		options = append(options, optionNextPage)
+	}
+
+	interactiveSelect := pterm.DefaultInteractiveSelect
+	interactiveSelect.MaxHeight = 5
+	selectedOption, _ := interactiveSelect.WithOptions(options).Show("Please select an article")
+	pterm.Info.Printfln("Selected option: %s", pterm.Green(selectedOption))
+
+	switch selectedOption {
+	case optionGoBack:
+		if c.article != nil {
+			err := c.article.Close()
+			if err != nil {
+				pterm.Info.Printfln("Close article failed, err: %v", err)
+			}
+		}
+		c.Columns()
+	case optionNextPage:
+		c.nextColumnPage()
+	case optionPrevPage:
+		c.prevColumnPage()
+	default:
+		for i := range articles {
+			if articles[i].Title == selectedOption {
+				c.article = articles[i]
+				c.Article()
+			}
+		}
+	}
+}
+
+func (c *CUI) nextColumnPage() {
+	c.term.ClearScreen()
+
+	spinnerInfo, err := pterm.DefaultSpinner.Start("Loading articles...")
+	if err != nil {
+		panic(err)
+	}
+
+	err = c.column.NextPage()
+	if err != nil {
+		panic(err)
+	}
+	spinnerInfo.Success("Load articles success")
+
+	c.listArticles()
+}
+
+func (c *CUI) prevColumnPage() {
+	c.term.ClearScreen()
+
+	spinnerInfo, err := pterm.DefaultSpinner.Start("Loading articles...")
+	if err != nil {
+		panic(err)
+	}
+
+	err = c.column.PrevPage()
+	if err != nil {
+		panic(err)
+	}
+	spinnerInfo.Success("Load articles success")
+
+	c.listArticles()
 }
 
 func (c *CUI) read(a *client.Article) {

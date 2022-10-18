@@ -17,10 +17,12 @@ type Column struct {
 	id   string
 	name string
 	href string
+	url  string
 
 	articleMap map[string]*Article
 	nextPage   string
-	prevPage   string
+	// prevPage   string
+	prevPageList []string
 }
 
 func (c *Column) Open() error {
@@ -35,17 +37,23 @@ func (c *Column) NextPage() error {
 	if c.nextPage == "" {
 		return errors.New("no next page")
 	}
+	c.prevPageList = append(c.prevPageList, c.url)
 	return c.enterPage(c.nextPage)
 }
 
 func (c *Column) PrevPage() error {
-	if c.prevPage == "" {
+	if len(c.prevPageList) < 1 {
 		return errors.New("no prev page")
 	}
-	return c.enterPage(c.prevPage)
+
+	page := c.prevPageList[len(c.prevPageList)-1]
+	c.prevPageList = c.prevPageList[:len(c.prevPageList)-1]
+
+	return c.enterPage(page)
 }
 
 func (c *Column) enterPage(path string) error {
+	c.url = path
 	res, err := http.Get(baseURL + path)
 	if err != nil {
 		log.Fatal(err)
@@ -96,9 +104,7 @@ func (c *Column) enterPage(path string) error {
 	//get prev & next page
 	doc.Find(".short-pages-2 a").Each(func(i int, s *goquery.Selection) {
 		href, _ := s.Attr("href")
-		if s.Text() == "上一页" {
-			c.prevPage = href
-		} else if s.Text() == "下一页" {
+		if s.Text() == "下一页" {
 			c.nextPage = href
 		}
 	})
@@ -111,6 +117,14 @@ func (c *Column) ListArticles() []*Article {
 		articles = append(articles, article)
 	}
 	return articles
+}
+
+func (c *Column) HasNextPage() bool {
+	return c.nextPage != ""
+}
+
+func (c *Column) HasPrevPage() bool {
+	return len(c.prevPageList) > 0
 }
 
 func NewColumn(id, name, href string, client *resty.Client) *Column {

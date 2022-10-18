@@ -54,6 +54,9 @@ func (c *Article) Open() error {
 }
 
 func (c *Article) Close() error {
+	if c.history == nil {
+		return nil
+	}
 	return c.history.Close()
 }
 
