@@ -117,7 +117,7 @@ func (h *BoltDBHistory) Close() error {
 }
 
 func (h BoltDBHistory) bucket(title, partition string) []byte {
-	return []byte("history:" + title + ":" + partition)
+	return []byte("history/" + title + "/" + partition)
 }
 
 // itob returns an 8-byte big endian representation of v.

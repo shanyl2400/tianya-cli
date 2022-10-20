@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"shanyl2400/tianya/client"
+	"shanyl2400/tianya/repository"
 
 	"github.com/eiannone/keyboard"
 	"github.com/pterm/pterm"
@@ -15,6 +16,7 @@ const (
 	optionQuit     = "> 退出"
 	optionNextPage = "下一页 >"
 	optionPrevPage = "< 上一页"
+	optionBookmark = "收藏夹"
 )
 
 func (c *CUI) Columns() {
@@ -25,7 +27,7 @@ func (c *CUI) Columns() {
 	columns := c.client.ListColumns()
 	spinnerInfo.Success("Load columns success")
 
-	var options []string
+	options := []string{optionBookmark}
 	for i := range columns {
 		options = append(options, fmt.Sprintf("%v", columns[i].Name()))
 	}
@@ -34,18 +36,21 @@ func (c *CUI) Columns() {
 	interactiveSelect := pterm.DefaultInteractiveSelect
 	interactiveSelect.MaxHeight = 5
 	selectedOption, _ := interactiveSelect.WithOptions(options).Show("Please select a column")
-	pterm.Info.Printfln("Selected option: %s", pterm.Green(selectedOption))
 
-	if selectedOption == optionQuit {
+	switch selectedOption {
+	case optionQuit:
 		os.Exit(0)
-	}
-
-	for i := range columns {
-		if columns[i].Name() == selectedOption {
-			c.column = columns[i]
-			c.Articles()
+	case optionBookmark:
+		c.Bookmark()
+	default:
+		for i := range columns {
+			if columns[i].Name() == selectedOption {
+				c.column = columns[i]
+				c.Articles()
+			}
 		}
 	}
+
 }
 
 func (c *CUI) Articles() {
@@ -62,24 +67,44 @@ func (c *CUI) Articles() {
 	}
 	spinnerInfo.Success("Load articles success")
 
-	c.listArticles()
+	articles := c.column.ListArticles()
+	c.listArticles(articles, true)
 }
 
-func (c *CUI) Article() {
+func (c *CUI) Article(isNew bool) {
 	c.term.ClearScreen()
 	spinnerInfo, err := pterm.DefaultSpinner.Start("Loading article...")
 	if err != nil {
 		panic(err)
 	}
 
-	err = c.article.Open()
+	if isNew {
+		err = c.article.Open()
+	} else {
+		err = c.article.Restore()
+	}
 	if err != nil {
 		panic(err)
 	}
+
 	spinnerInfo.Success("Load article success")
 
 	fmt.Print("Press d to start your read...")
-	c.read(c.article)
+	c.read(c.article, isNew)
+}
+
+func (c *CUI) Bookmark() {
+	c.term.ClearScreen()
+	bookmarks, err := repository.GetBookmark().List()
+	if err != nil {
+		panic(err)
+	}
+
+	articles := make([]*client.Article, len(bookmarks))
+	for i := range bookmarks {
+		articles[i] = client.BookmarkToArticle(bookmarks[i])
+	}
+	c.listArticles(articles, false)
 }
 
 func (c *CUI) HomePage() {
@@ -100,13 +125,12 @@ func (c *CUI) HomePage() {
 	spinnerInfo.Success("Connected to server")
 }
 
-func (c *CUI) listArticles() {
-	articles := c.column.ListArticles()
+func (c *CUI) listArticles(articles []*client.Article, isNew bool) {
 	options := []string{}
 
 	//翻页
 	options = append(options, optionGoBack)
-	if c.column.HasPrevPage() {
+	if c.column != nil && c.column.HasPrevPage() {
 		options = append(options, optionPrevPage)
 	}
 
@@ -114,14 +138,13 @@ func (c *CUI) listArticles() {
 		options = append(options, fmt.Sprintf("%v", articles[i].Title))
 	}
 
-	if c.column.HasNextPage() {
+	if c.column != nil && c.column.HasNextPage() {
 		options = append(options, optionNextPage)
 	}
 
 	interactiveSelect := pterm.DefaultInteractiveSelect
 	interactiveSelect.MaxHeight = 5
 	selectedOption, _ := interactiveSelect.WithOptions(options).Show("Please select an article")
-	pterm.Info.Printfln("Selected option: %s", pterm.Green(selectedOption))
 
 	switch selectedOption {
 	case optionGoBack:
@@ -140,7 +163,7 @@ func (c *CUI) listArticles() {
 		for i := range articles {
 			if articles[i].Title == selectedOption {
 				c.article = articles[i]
-				c.Article()
+				c.Article(isNew)
 			}
 		}
 	}
@@ -160,7 +183,8 @@ func (c *CUI) nextColumnPage() {
 	}
 	spinnerInfo.Success("Load articles success")
 
-	c.listArticles()
+	articles := c.column.ListArticles()
+	c.listArticles(articles, true)
 }
 
 func (c *CUI) prevColumnPage() {
@@ -177,10 +201,11 @@ func (c *CUI) prevColumnPage() {
 	}
 	spinnerInfo.Success("Load articles success")
 
-	c.listArticles()
+	articles := c.column.ListArticles()
+	c.listArticles(articles, true)
 }
 
-func (c *CUI) read(a *client.Article) {
+func (c *CUI) read(a *client.Article, isNew bool) {
 out:
 	for {
 		char, key, err := keyboard.GetKey()
@@ -201,11 +226,29 @@ out:
 			c.prevPage(a)
 		case 'd':
 			c.nextPage(a)
+		case 'A':
+			c.prevPage(a)
+		case 'D':
+			c.nextPage(a)
+		case 'm':
+			err = a.AddBookMark()
+			if err != nil {
+				fmt.Println("add bookmark failed, err:", err)
+			}
+		case 'M':
+			err = a.AddBookMark()
+			if err != nil {
+				fmt.Println("add bookmark failed, err:", err)
+			}
 		case 'q':
 			break out
 		}
 	}
-	c.Articles()
+	if isNew {
+		c.Articles()
+	} else {
+		c.Bookmark()
+	}
 }
 
 func (c *CUI) prevPage(a *client.Article) {

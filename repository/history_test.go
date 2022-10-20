@@ -44,15 +44,26 @@ var (
 
 func TestPushPop(t *testing.T) {
 	his := NewHistory("./data")
+
+	t.Log("opening data file...")
 	err := his.Open()
 	assert.NoError(t, err)
 
+	defer func() {
+		err = his.Close()
+		assert.NoError(t, err)
+
+		os.RemoveAll("./data")
+	}()
+
+	t.Log("pushing history...")
 	for i := range items {
 		id, err := his.Push(items[i].Title, items[i].Parititon, items[i].Content)
 		items[i].ID = id
 		assert.NoError(t, err)
 	}
 
+	t.Log("checking history...")
 	for i := len(items) - 1; i >= 0; i-- {
 		empty := his.IsEmpty(items[i].Title, items[i].Parititon)
 		assert.False(t, empty)
@@ -62,8 +73,5 @@ func TestPushPop(t *testing.T) {
 		assert.Equal(t, items[i], c)
 		t.Logf("item: %#v", items[i])
 	}
-	err = his.Close()
-	assert.NoError(t, err)
-
-	os.RemoveAll("./data")
+	t.Log("done")
 }

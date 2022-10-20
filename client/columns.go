@@ -1,10 +1,8 @@
 package client
 
 import (
-	"errors"
-	"fmt"
-	"log"
 	"net/http"
+	"shanyl2400/tianya/log"
 	"strconv"
 	"strings"
 	"time"
@@ -35,7 +33,8 @@ func (c *Column) Name() string {
 
 func (c *Column) NextPage() error {
 	if c.nextPage == "" {
-		return errors.New("no next page")
+		log.Info("no next page")
+		return ErrPageOutRange
 	}
 	c.prevPageList = append(c.prevPageList, c.url)
 	return c.enterPage(c.nextPage)
@@ -43,7 +42,7 @@ func (c *Column) NextPage() error {
 
 func (c *Column) PrevPage() error {
 	if len(c.prevPageList) < 1 {
-		return errors.New("no prev page")
+		log.Info("no prev page")
 	}
 
 	page := c.prevPageList[len(c.prevPageList)-1]
@@ -56,15 +55,26 @@ func (c *Column) enterPage(path string) error {
 	c.url = path
 	res, err := http.Get(baseURL + path)
 	if err != nil {
-		log.Fatal(err)
+		log.WithField("err", err).
+			WithField("url", baseURL+path).
+			Error("access website failed")
+		return err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("access website failed, status: %v", res.StatusCode)
+		log.WithField("err", err).
+			WithField("statusCode", res.StatusCode).
+			WithField("res", res).
+			Error("access website failed")
+		return ErrHTTPBadStateCode
 	}
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
+		log.WithField("err", err).
+			WithField("body", res.Body).
+			WithField("res", res).
+			Error("create dom failed")
 		return err
 	}
 
